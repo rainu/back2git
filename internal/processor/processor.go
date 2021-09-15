@@ -2,9 +2,9 @@ package processor
 
 import (
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/multierr"
 	"os"
 	"path"
-	"strings"
 )
 
 type processor struct {
@@ -29,6 +29,16 @@ func (p *processor) Manage(filePath string) {
 	if err != nil {
 		log.WithError(err).WithField("path", filePath).Error("Unable to watch file!")
 	}
+
+	file, _ := os.Open(filePath)
+	if file != nil {
+		defer file.Close()
+
+		err = p.storage.Save(file)
+		if err != nil {
+			log.WithError(err).WithField("path", filePath).Error("Unable to save file!")
+		}
+	}
 }
 
 func (p *processor) onChange(filePath string) {
@@ -37,12 +47,12 @@ func (p *processor) onChange(filePath string) {
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		iLog.WithError(err).Error("Unable to read file content!")
+		iLog.WithError(err).Error("Unable to open file!")
 		return
 	}
 	defer file.Close()
 
-	err = p.storage.Save(strings.TrimLeft(filePath, "/"), file)
+	err = p.storage.Save(file)
 	if err != nil {
 		iLog.WithError(err).Error("Unable to save file!")
 		return
@@ -53,7 +63,7 @@ func (p *processor) onDelete(filePath string) {
 	iLog := log.WithField("path", filePath)
 	iLog.Info("File deletion detected.")
 
-	err := p.storage.Save(strings.TrimLeft(filePath, "/"), strings.NewReader(""))
+	err := p.storage.Delete(filePath)
 	if err != nil {
 		iLog.WithError(err).Error("Unable to save file!")
 		return
@@ -62,10 +72,12 @@ func (p *processor) onDelete(filePath string) {
 
 func (p *processor) Close() error {
 	log.Info("Synchronize storage...")
-	err := p.storage.Sync()
-	if err == nil {
+	syncErr := p.storage.Sync()
+	if syncErr == nil {
 		log.Info("Synchronization finished successfully.")
 	}
 
-	return err
+	watchErr := p.watcher.Close()
+
+	return multierr.Combine(syncErr, watchErr)
 }

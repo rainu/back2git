@@ -1,13 +1,17 @@
 package processor
 
-import "io"
+import (
+	"os"
+)
 
 type Storage interface {
-	Save(name string, content io.Reader) error
+	Save(file *os.File) error
+	Delete(filePath string) error
 	Sync() error
 }
 
 type FileWatcher interface {
 	Watch(path string, onChange, onDelete func(name string)) error
 	Unwatch(path string) error
+	Close() error
 }
