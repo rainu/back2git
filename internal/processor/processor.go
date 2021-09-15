@@ -3,8 +3,10 @@ package processor
 import (
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
+	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 )
 
 type processor struct {
@@ -20,14 +22,28 @@ func NewProcessor(watcher FileWatcher, storage Storage) *processor {
 }
 
 func (p *processor) Manage(filePath string) {
+	iLog := log.WithField("path", filePath)
 	if !path.IsAbs(filePath) {
-		log.WithField("path", filePath).Warn("Only absolute path are supported!")
+		iLog.Warn("Only absolute path are supported!")
 		return
 	}
 
+	//if the path is a directory
+	if fi, _ := os.Stat(filePath); fi != nil && fi.IsDir() {
+		iLog.Info("Scan directory...")
+		filepath.Walk(filePath, func(path string, info fs.FileInfo, err error) error {
+			if !info.IsDir() {
+				p.Manage(path)
+			}
+			return nil
+		})
+		return
+	}
+
+	iLog.Info("Overwatch file.")
 	err := p.watcher.Watch(filePath, p.onChange, p.onDelete)
 	if err != nil {
-		log.WithError(err).WithField("path", filePath).Error("Unable to watch file!")
+		iLog.WithError(err).Error("Unable to watch file!")
 	}
 
 	file, _ := os.Open(filePath)
@@ -36,7 +52,7 @@ func (p *processor) Manage(filePath string) {
 
 		err = p.storage.Save(file)
 		if err != nil {
-			log.WithError(err).WithField("path", filePath).Error("Unable to save file!")
+			iLog.WithError(err).Error("Unable to save file!")
 		}
 	}
 }

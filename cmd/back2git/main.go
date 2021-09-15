@@ -48,7 +48,6 @@ func main() {
 	p := processor.NewProcessor(fw, s)
 
 	for filePath, _ := range config.Files {
-		log.WithField("path", filePath).Info("Overwatch file.")
 		p.Manage(filePath)
 	}
 
